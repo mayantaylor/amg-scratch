@@ -1,0 +1,30 @@
+
+==================================================================================================
+Directory : amg_matrices32/linear_elasticity
+SpMV Benchmark — float32 CSR  |  CPU trials=100  GPU trials=100
+==================================================================================================
+  meta.json: {'case': 'linear_elasticity', 'dtype': '<f4', 'levels': [{'level': 0, 'rows': 131072, 'cols': 131072, 'nnz': 2347024, 'nnz_per_row': 17.91, 'file': 'level_0.npz'}, {'level': 1, 'rows': 22188, 'cols': 22188, 'nnz': 589824, 'nnz_per_row': 26.58, 'file': 'level_1.npz'}, {'level': 2, 'rows': 2523, 'cols': 2523, 'nnz': 65025, 'nnz_per_row': 25.77, 'file': 'level_2.npz'}, {'level': 3, 'rows': 300, 'cols': 300, 'nnz': 7056, 'nnz_per_row': 23.52, 'file': 'level_3.npz'}, {'level': 4, 'rows': 48, 'cols': 48, 'nnz': 900, 'nnz_per_row': 18.75, 'file': 'level_4.npz'}, {'level': 5, 'rows': 12, 'cols': 12, 'nnz': 144, 'nnz_per_row': 12.0, 'file': 'level_5.npz'}]}
+  Benchmarking level 0  (131,072 × 131,072, nnz=2,347,024) ...
+  Benchmarking level 1  (22,188 × 22,188, nnz=589,824) ...
+  Benchmarking level 2  (2,523 × 2,523, nnz=65,025) ...
+  Benchmarking level 3  (300 × 300, nnz=7,056) ...
+  Benchmarking level 4  (48 × 48, nnz=900) ...
+  Benchmarking level 5  (12 × 12, nnz=144) ...
+
+Lvl        Rows          NNZ   CPU mean(ms)   CPU BW(GB/s)   GPU mean(ms)   GPU BW(GB/s)   Speedup
+--------------------------------------------------------------------------------------------------
+  0     131,072    2,347,024         1.4633          13.91         0.0366         556.07     40.0x
+  1      22,188      589,824         0.4806          10.37         0.0360         138.52     13.4x
+  2       2,523       65,025         0.0554           9.94         0.0359          15.33      1.5x
+  3         300        7,056         0.0090           6.70         0.0337           1.78      0.3x
+  4          48          900         0.0038           2.06         0.0335           0.23      0.1x
+  5          12          144         0.0030           0.43         0.0336           0.04      0.1x
+
+  GPU effective bandwidth by level (label: linear_elasticity):
+    Level 0: 556.07 GB/s  (mean 0.0366 ms)
+    Level 1: 138.52 GB/s  (mean 0.0360 ms)
+    Level 2: 15.33 GB/s  (mean 0.0359 ms)
+    Level 3: 1.78 GB/s  (mean 0.0337 ms)
+    Level 4: 0.23 GB/s  (mean 0.0335 ms)
+    Level 5: 0.04 GB/s  (mean 0.0336 ms)
+
