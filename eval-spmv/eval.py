@@ -28,12 +28,14 @@ Usage examples:
     # Override trial counts
     python amg_spmv_bench.py eval-spmv/matrices256/block_dom_decomp/ \\
                               --cpu-trials 50 --gpu-trials 200
+
+    # Run in 32-bit mode
+    python amg_spmv_bench.py eval-spmv/matrices256/block_dom_decomp/ --dtype float32
 """
 
 import json
 import numpy as np
 import scipy.sparse as sp
-import scipy.io as sio
 import time
 import os
 import glob
@@ -53,7 +55,7 @@ except ImportError:
 # 1.  Load matrices from a directory of .npz files
 # ─────────────────────────────────────────────────────────────────────────────
 
-def load_levels(matrix_dir: str) -> tuple[list[dict], dict | None]:
+def load_levels(matrix_dir: str, np_dtype: np.dtype) -> tuple[list[dict], dict | None]:
     """
     Scan *matrix_dir* for files named level_<N>.npz (any N), load each as a
     scipy sparse CSR matrix, and return a sorted list of level dicts.
@@ -91,7 +93,7 @@ def load_levels(matrix_dir: str) -> tuple[list[dict], dict | None]:
             lvl_idx = len(levels)  # fallback: sequential
 
         A = sp.load_npz(path)
-        A = A.tocsr().astype(np.float64)  # ensure CSR float64
+        A = A.tocsr().astype(np_dtype)
 
         levels.append({
             "level": lvl_idx,
@@ -113,7 +115,8 @@ def load_levels(matrix_dir: str) -> tuple[list[dict], dict | None]:
 
 def benchmark_cpu(A_scipy: sp.csr_matrix, n_trials: int = 50) -> dict:
     n = A_scipy.shape[1]
-    x = np.random.rand(n).astype(np.float64)
+    val_bytes = A_scipy.dtype.itemsize          # 4 (float32) or 8 (float64)
+    x = np.random.rand(n).astype(A_scipy.dtype)
 
     # Warmup
     for _ in range(5):
@@ -127,11 +130,11 @@ def benchmark_cpu(A_scipy: sp.csr_matrix, n_trials: int = 50) -> dict:
         times.append(t1 - t0)
 
     times = np.array(times)
-    bytes_moved = (A_scipy.nnz * 8           # values  (float64)
-                   + A_scipy.nnz * 4         # col_ind (int32)
-                   + (A_scipy.shape[0]+1)*4  # row_ptr (int32)
-                   + n * 8                   # x vector
-                   + A_scipy.shape[0] * 8)   # y vector
+    bytes_moved = (A_scipy.nnz * val_bytes       # values  (float32/64)
+                   + A_scipy.nnz * 4             # col_ind (int32)
+                   + (A_scipy.shape[0]+1)*4      # row_ptr (int32)
+                   + n * val_bytes               # x vector
+                   + A_scipy.shape[0] * val_bytes)  # y vector
     bw = bytes_moved / times.mean() / 1e9    # GB/s
 
     return {
@@ -152,10 +155,12 @@ def benchmark_cusparse(A_scipy: sp.csr_matrix, n_trials: int = 200) -> dict:
     for accurate GPU timing.
     """
     n = A_scipy.shape[1]
+    val_bytes = A_scipy.dtype.itemsize          # 4 (float32) or 8 (float64)
+    cp_dtype  = cp.dtype(A_scipy.dtype)
 
     # Upload to device
     A_gpu = cpsp.csr_matrix(A_scipy)
-    x_gpu = cp.random.rand(n, dtype=cp.float64)
+    x_gpu = cp.random.rand(n, dtype=cp_dtype)
 
     # Warmup — triggers JIT compilation / cuSPARSE handle init
     for _ in range(20):
@@ -172,11 +177,11 @@ def benchmark_cusparse(A_scipy: sp.csr_matrix, n_trials: int = 200) -> dict:
     stop_ev.synchronize()
     mean_ms = cp.cuda.get_elapsed_time(start_ev, stop_ev) / n_trials
 
-    bytes_moved = (A_scipy.nnz * 8
+    bytes_moved = (A_scipy.nnz * val_bytes
                    + A_scipy.nnz * 4
                    + (A_scipy.shape[0]+1)*4
-                   + n * 8
-                   + A_scipy.shape[0] * 8)
+                   + n * val_bytes
+                   + A_scipy.shape[0] * val_bytes)
     bw = bytes_moved / (mean_ms * 1e-3) / 1e9  # GB/s
 
     return {
@@ -214,9 +219,10 @@ def print_results(results: list):
 # 5.  Per-directory benchmark driver
 # ─────────────────────────────────────────────────────────────────────────────
 
-def run_directory(matrix_dir: str, cpu_trials: int, gpu_trials: int) -> list:
+def run_directory(matrix_dir: str, cpu_trials: int, gpu_trials: int,
+                  np_dtype: np.dtype) -> list:
     """Load all levels from *matrix_dir*, benchmark, return result list."""
-    levels, meta = load_levels(matrix_dir)
+    levels, meta = load_levels(matrix_dir, np_dtype)
 
     if meta:
         print(f"  meta.json: {meta}")
@@ -260,8 +266,11 @@ def main():
                         help="Number of CPU SpMV trials per level (default: 20)")
     parser.add_argument("--gpu-trials", type=int, default=50,
                         help="Number of GPU SpMV trials per level (default: 50)")
+    parser.add_argument("--dtype", choices=["float32", "float64"], default="float64",
+                        help="Floating-point precision for SpMV (default: float64)")
 
     args = parser.parse_args()
+    np_dtype = np.dtype(args.dtype)
 
     for matrix_dir in args.matrix_dirs:
         matrix_dir = matrix_dir.rstrip("/")
@@ -270,12 +279,13 @@ def main():
         print()
         print("=" * len(_HEADER))
         print(f"Directory : {matrix_dir}")
-        print(f"SpMV Benchmark — float64 CSR  |  "
+        print(f"SpMV Benchmark — {args.dtype} CSR  |  "
               f"CPU trials={args.cpu_trials}  GPU trials={args.gpu_trials}")
         print("=" * len(_HEADER))
 
         try:
-            results = run_directory(matrix_dir, args.cpu_trials, args.gpu_trials)
+            results = run_directory(matrix_dir, args.cpu_trials, args.gpu_trials,
+                                    np_dtype)
         except FileNotFoundError as exc:
             print(f"  ERROR: {exc}")
             continue

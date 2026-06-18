@@ -34,6 +34,7 @@ All randomness is seeded so the same grid_size always produces the same matrices
 Usage
 -----
     python generate_amg_hierarchies.py --grid_size 256 --output_dir ./amg_matrices
+    python generate_amg_hierarchies.py --grid_size 256 --output_dir ./amg_matrices --dtype float32
 
     Note: grid_size must be >= 256 for all cases to reach 6 AMG levels.
           linear_elasticity produces a matrix of size (2*grid_size^2) x (2*grid_size^2)
@@ -209,13 +210,14 @@ def build_hierarchy(case_name, A, rng, B=None):
 # I/O helpers
 # ---------------------------------------------------------------------------
 
-def save_hierarchy(matrices, case_name, output_dir):
+def save_hierarchy(matrices, case_name, output_dir, np_dtype):
     case_dir = os.path.join(output_dir, case_name)
     os.makedirs(case_dir, exist_ok=True)
 
-    meta = {"case": case_name, "levels": []}
+    meta = {"case": case_name, "dtype": np_dtype.str, "levels": []}
 
     for i, A in enumerate(matrices):
+        A = A.astype(np_dtype)                  # cast values; indices stay int32
         path = os.path.join(case_dir, f"level_{i}.npz")
         sp.save_npz(path, A)
 
@@ -291,10 +293,17 @@ def main():
         default="./amg_matrices",
         help="Root directory for output files. (default: ./amg_matrices)",
     )
+    parser.add_argument(
+        "--dtype",
+        choices=["float32", "float64"],
+        default="float64",
+        help="Floating-point dtype for saved matrix values (default: float64)",
+    )
     args = parser.parse_args()
 
     grid_size = args.grid_size
     output_dir = args.output_dir
+    np_dtype = np.dtype(args.dtype)
 
     if grid_size < 256:
         print(
@@ -312,6 +321,7 @@ def main():
     print(f"output_dir    : {os.path.abspath(output_dir)}")
     print(f"target levels : {TARGET_LEVELS}")
     print(f"random seed   : {RANDOM_SEED}")
+    print(f"dtype         : {args.dtype}")
     print()
 
     for case_name, builder, description in CASES:
@@ -324,13 +334,14 @@ def main():
             A, B = result, None
 
         matrices = build_hierarchy(case_name, A, rng, B=B)
-        save_hierarchy(matrices, case_name, output_dir)
+        save_hierarchy(matrices, case_name, output_dir, np_dtype)
         print()
 
     summary = {
         "grid_size": grid_size,
         "random_seed": RANDOM_SEED,
         "target_levels": TARGET_LEVELS,
+        "dtype": args.dtype,
         "cases": [name for name, _, _ in CASES],
         "amg_methods": {
             "poisson": "smoothed_aggregation",
